@@ -69,6 +69,9 @@ func CreateEmptyRoom(data *RoomInfo) (id string) {
 	id = uuid.New().String()
 	binaryData, _ := json.Marshal(data)
 	mainClient.Set(context.Background(), id, string(binaryData), 24 * time.Hour)
+	ids, _ := CategoryRooms(data.Category);
+	ids = append(ids, id)
+	saveCategoryRooms(data.Category, CategoryInfo{Rooms: ids})
 	return id;
 }
 
@@ -86,6 +89,11 @@ func CategoryRooms(category string) ([]string, error) {
 	}
 }
 
+func saveCategoryRooms(category string, data CategoryInfo) {
+	binaryData, _ := json.Marshal(data)
+	metaClient.Set(context.Background(), category, binaryData, 24 * time.Hour)
+}
+
 func JoinRoom(user, room string) error {
 	info, err := GetRoom(room);
 	if err != nil {
@@ -98,3 +106,36 @@ func JoinRoom(user, room string) error {
 	setRoom(room, &info);
 	return nil
 }
+
+func destroyRoom(room, category string) error {
+	mainClient.Del(context.Background(), room)
+	rooms, _ := CategoryRooms(category)
+	idx := utils.FindInSlice(room, rooms)
+	if idx == -1 {
+		return fmt.Errorf("No such room in this category")
+	}
+	rooms = utils.RemoveFromSlice(idx, rooms)
+	saveCategoryRooms(category, CategoryInfo{Rooms: rooms})
+	return nil
+}
+
+func LeaveRoom(user, room string) error {
+	info, err := GetRoom(room);
+	log.Println(info)
+	if err != nil {
+		return fmt.Errorf("no room duh")
+	}
+	idx := utils.FindInSlice(user, info.Users);
+	if idx == -1 {
+		return fmt.Errorf("no such user in this room")
+	}
+	info.Users = utils.RemoveFromSlice(idx, info.Users);
+	if len(info.Users) == 0 {
+		return destroyRoom(room, info.Category)
+	}
+	log.Printf("Destroying user: %s", user)
+	setRoom(room, &info)
+	return nil;
+}
+
+

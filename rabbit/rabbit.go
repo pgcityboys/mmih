@@ -21,6 +21,8 @@ const SEND_TIMEOUT time.Duration = 10;
 
 var NewRoomChannel chan messages.NewRoomRequest = make(chan messages.NewRoomRequest);
 var JoinRoomChannel chan messages.MatchRequest = make(chan messages.MatchRequest);
+var RoomInfoChannel chan string = make(chan string);
+var RoomLeaveChannel chan messages.MatchRequest = make(chan messages.MatchRequest);
 
 func IntializeRMQClient() {
 	rabbitAddress := utils.EnvWithDefaults("RABBITMQ_ADDRESS", "localhost")
@@ -43,6 +45,8 @@ func IntializeRMQClient() {
 			var forever chan struct {};
 			go handleMatchRequests()
 			go handleNewRoomRequests()
+			go handleRoomInfo()
+			go handleRoomLeave()
 			<-forever;
 		}
 	}
@@ -62,10 +66,12 @@ func establishChannel() error {
 	channel.QueueDeclare("chat_req", false, false, false, false, nil)
 	channel.QueueDeclare("rooms_req", false, false, false, false, nil)
 	channel.QueueDeclare("rooms_new", false, false, false, false, nil)
+	channel.QueueDeclare("leave_room", false, false, false, false, nil)
 	channel.QueueBind("match_req", "match_req", "web", false, nil);
 	channel.QueueBind("chat_req", "chat_req", "web", false, nil);
 	channel.QueueBind("rooms_req", "rooms_req", "web", false, nil);
 	channel.QueueBind("rooms_new", "rooms_new", "web", false, nil);
+	channel.QueueBind("leave_room", "leave_room", "web", false, nil);
 	// Send out messages to topic exchange
 	channel.ExchangeDeclare("matchmaking", "topic", false, false, false, false, nil);
 	channel.QueueDeclare("match_res", false, false, false, false, nil);
@@ -108,5 +114,27 @@ func handleNewRoomRequests() {
 			log.Println("ERROR: Couldnt unmarshall proto")
 		}
 		NewRoomChannel<-request
+	}
+}
+
+func handleRoomInfo() {
+	roomInfoChannel, _ := connection.Channel();
+	msgs, _ := roomInfoChannel.ConsumeWithContext(context.Background(), "rooms_req", "mmih", true, false, false, false, nil);
+	for msg := range msgs {
+		var category string = string(msg.Body);
+		RoomInfoChannel<-category
+	}
+}
+
+func handleRoomLeave() {
+	roomLeaveChannel, _ := connection.Channel();
+	msgs, _ := roomLeaveChannel.ConsumeWithContext(context.Background(), "leave_room", "mmih", true, false, false, false, nil);
+	for msg := range msgs {
+		var request messages.MatchRequest;
+		err := proto.Unmarshal(msg.Body, &request)
+		if err != nil {
+			log.Println("ERROR: Couldnt unmarshall proto")
+		}
+		RoomLeaveChannel<-request
 	}
 }
