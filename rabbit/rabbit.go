@@ -1,12 +1,15 @@
 package rabbit
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"mmih/messages"
 	"mmih/utils"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"google.golang.org/protobuf/proto"
 )
 
 var connection *amqp.Connection;
@@ -15,6 +18,8 @@ var channel *amqp.Channel;
 const TIMEOUT time.Duration = 5;
 const RETRIES int = 5;
 const SEND_TIMEOUT time.Duration = 10;
+
+var MatchRequests chan messages.MatchRequest = make(chan messages.MatchRequest);
 
 
 func IntializeRMQClient() {
@@ -36,6 +41,7 @@ func IntializeRMQClient() {
 				continue;
 			}
 			log.Println("Connected to rmq instance")
+			go handleMatchRequests()
 			<-forever;
 		}
 	}
@@ -70,3 +76,14 @@ func ensureChannelHealth() error {
 	return nil;
 }
 
+func handleMatchRequests() {
+	msgs, _ := channel.ConsumeWithContext(context.Background(), "match_req", "mmih", true, false, false, false, nil)
+	for msg := range msgs {
+		var request messages.MatchRequest;
+		err := proto.Unmarshal(msg.Body, &request)
+		if err != nil {
+			log.Println("ERROR: Couldnt unmarshall proto")
+		}
+		MatchRequests<-request
+	}
+}

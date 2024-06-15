@@ -2,7 +2,15 @@ syntax = "proto3";
 package messages;
 option go_package = "/messages";
 
+// Struct sent as a request for a match with a potential user
 message MatchRequest {
 	string userId = 1;
 	string category = 2;
+}
+
+// Struct sent out as a match confirmation, one per user
+message MatchConfirmation {
+	string roomId = 1;
+	repeated string users = 2;
+	string category = 3;
 }
