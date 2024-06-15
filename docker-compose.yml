@@ -1,0 +1,6 @@
+services:
+  mmih:
+    build: .
+    env_file:
+      - .env
+    

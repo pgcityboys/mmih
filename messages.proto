@@ -1,0 +1,8 @@
+syntax = "proto3";
+package messages;
+option go_package = "/messages";
+
+message MatchRequest {
+	string userId = 1;
+	string category = 2;
+}
