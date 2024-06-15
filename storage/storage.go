@@ -119,23 +119,23 @@ func destroyRoom(room, category string) error {
 	return nil
 }
 
-func LeaveRoom(user, room string) error {
+func LeaveRoom(user, room string) (userId string, other []string, err error) {
 	info, err := GetRoom(room);
 	log.Println(info)
 	if err != nil {
-		return fmt.Errorf("no room duh")
+		return "", nil, fmt.Errorf("no room duh")
 	}
 	idx := utils.FindInSlice(user, info.Users);
 	if idx == -1 {
-		return fmt.Errorf("no such user in this room")
+		return "", nil, fmt.Errorf("no such user in this room")
 	}
 	info.Users = utils.RemoveFromSlice(idx, info.Users);
 	if len(info.Users) == 0 {
-		return destroyRoom(room, info.Category)
+		return user, nil, destroyRoom(room, info.Category)
 	}
 	log.Printf("Destroying user: %s", user)
 	setRoom(room, &info)
-	return nil;
+	return user, info.Users, nil;
 }
 
 

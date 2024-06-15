@@ -21,8 +21,9 @@ const SEND_TIMEOUT time.Duration = 10;
 
 var NewRoomChannel chan messages.NewRoomRequest = make(chan messages.NewRoomRequest);
 var JoinRoomChannel chan messages.MatchRequest = make(chan messages.MatchRequest);
-var RoomInfoChannel chan string = make(chan string);
+var RoomInfoChannel chan messages.CategoryInfoRequest = make(chan messages.CategoryInfoRequest);
 var RoomLeaveChannel chan messages.MatchRequest = make(chan messages.MatchRequest);
+var ChatInChannel chan messages.ChatIn = make(chan messages.ChatIn);
 
 func IntializeRMQClient() {
 	rabbitAddress := utils.EnvWithDefaults("RABBITMQ_ADDRESS", "localhost")
@@ -77,9 +78,11 @@ func establishChannel() error {
 	channel.QueueDeclare("match_res", false, false, false, false, nil);
 	channel.QueueDeclare("chat_notify", false, false, false, false, nil)
 	channel.QueueDeclare("room_info", false, false, false, false, nil)
+	channel.QueueDeclare("room_leave", false, false, false, false, nil)
 	channel.QueueBind("match_res", "match_res", "matchmaking", false, nil);
 	channel.QueueBind("chat_notify", "chat_notify", "matchmaking", false, nil);
 	channel.QueueBind("room_info", "room_info", "matchmaking", false, nil);
+	channel.QueueBind("room_leave", "room_leave", "matchmaking", false, nil);
 	return nil;
 }
 
@@ -121,8 +124,13 @@ func handleRoomInfo() {
 	roomInfoChannel, _ := connection.Channel();
 	msgs, _ := roomInfoChannel.ConsumeWithContext(context.Background(), "rooms_req", "mmih", true, false, false, false, nil);
 	for msg := range msgs {
-		var category string = string(msg.Body);
-		RoomInfoChannel<-category
+		var request messages.CategoryInfoRequest;
+		err := proto.Unmarshal(msg.Body, &request)
+		if err != nil {
+			log.Println("ERROR: Couldnt unmarshall proto")
+		}
+
+		RoomInfoChannel<-request
 	}
 }
 
@@ -137,4 +145,39 @@ func handleRoomLeave() {
 		}
 		RoomLeaveChannel<-request
 	}
+}
+
+func handleChatIn() {
+	chatChannel, _ := connection.Channel();
+	msgs, _ := chatChannel.ConsumeWithContext(context.Background(), "chat_req", "mmih", true, false, false, false, nil);
+	for msg := range msgs {
+		var request messages.ChatIn;
+		err := proto.Unmarshal(msg.Body, &request)
+		if err != nil {
+			log.Println("ERROR: Couldnt unmarshall proto")
+		}
+		ChatInChannel<-request
+	}
+
+}
+
+// Send messages
+func SendRoomUpdate(data messages.MatchConfirmation) {
+	binaryData, _ := proto.Marshal(&data);
+	channel.Publish("matchmaking", "match_res", false, false, amqp.Publishing{Body: binaryData})
+}
+
+func SendCategoryInfo(data messages.CategoryInfo) {
+	binaryData, _ := proto.Marshal(&data);
+	channel.Publish("matchmaking", "room_info", false, false, amqp.Publishing{Body: binaryData})
+}
+
+func SendRoomLeave(data messages.LeaveRoomInfo) {
+	binaryData, _ := proto.Marshal(&data);
+	channel.Publish("matchmaking", "room_leave", false, false, amqp.Publishing{Body: binaryData})
+}
+
+func SendChatOut(data messages.ChatOut) {
+	binaryData, _ := proto.Marshal(&data);
+	channel.Publish("matchmaking", "chat_notify", false, false, amqp.Publishing{Body: binaryData})
 }
