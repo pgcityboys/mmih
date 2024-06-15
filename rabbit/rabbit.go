@@ -1,4 +1,4 @@
-package rabbit
+package rabbit;
 
 import (
 	"context"
@@ -19,8 +19,8 @@ const TIMEOUT time.Duration = 5;
 const RETRIES int = 5;
 const SEND_TIMEOUT time.Duration = 10;
 
-var MatchRequests chan messages.MatchRequest = make(chan messages.MatchRequest);
-
+var NewRoomChannel chan messages.NewRoomRequest = make(chan messages.NewRoomRequest);
+var JoinRoomChannel chan messages.MatchRequest = make(chan messages.MatchRequest);
 
 func IntializeRMQClient() {
 	rabbitAddress := utils.EnvWithDefaults("RABBITMQ_ADDRESS", "localhost")
@@ -35,16 +35,18 @@ func IntializeRMQClient() {
 		} else { // Initialize client
 			connection = conn;
 			defer connection.Close();
-			var forever chan struct {};
 			err := establishChannel();
 			if err != nil {
 				continue;
 			}
 			log.Println("Connected to rmq instance")
+			var forever chan struct {};
 			go handleMatchRequests()
+			go handleNewRoomRequests()
 			<-forever;
 		}
 	}
+	log.Println("RMQ client: waiting for incoming messages")
 }
 
 func establishChannel() error {
@@ -58,14 +60,20 @@ func establishChannel() error {
 	channel.ExchangeDeclare("web", "direct", false, false, false, false, nil);
 	channel.QueueDeclare("match_req", false, false, false, false, nil);
 	channel.QueueDeclare("chat_req", false, false, false, false, nil)
+	channel.QueueDeclare("rooms_req", false, false, false, false, nil)
+	channel.QueueDeclare("rooms_new", false, false, false, false, nil)
 	channel.QueueBind("match_req", "match_req", "web", false, nil);
 	channel.QueueBind("chat_req", "chat_req", "web", false, nil);
+	channel.QueueBind("rooms_req", "rooms_req", "web", false, nil);
+	channel.QueueBind("rooms_new", "rooms_new", "web", false, nil);
 	// Send out messages to topic exchange
 	channel.ExchangeDeclare("matchmaking", "topic", false, false, false, false, nil);
 	channel.QueueDeclare("match_res", false, false, false, false, nil);
 	channel.QueueDeclare("chat_notify", false, false, false, false, nil)
+	channel.QueueDeclare("room_info", false, false, false, false, nil)
 	channel.QueueBind("match_res", "match_res", "matchmaking", false, nil);
 	channel.QueueBind("chat_notify", "chat_notify", "matchmaking", false, nil);
+	channel.QueueBind("room_info", "room_info", "matchmaking", false, nil);
 	return nil;
 }
 
@@ -76,6 +84,8 @@ func ensureChannelHealth() error {
 	return nil;
 }
 
+// Handlers
+
 func handleMatchRequests() {
 	msgs, _ := channel.ConsumeWithContext(context.Background(), "match_req", "mmih", true, false, false, false, nil)
 	for msg := range msgs {
@@ -84,6 +94,19 @@ func handleMatchRequests() {
 		if err != nil {
 			log.Println("ERROR: Couldnt unmarshall proto")
 		}
-		MatchRequests<-request
+		JoinRoomChannel<-request
+	}
+}
+
+func handleNewRoomRequests() {
+	newRoomChannel, _ := connection.Channel();
+	msgs, _ := newRoomChannel.ConsumeWithContext(context.Background(), "rooms_new", "mmih", true, false, false, false, nil);
+	for msg := range msgs {
+		var request messages.NewRoomRequest;
+		err := proto.Unmarshal(msg.Body, &request)
+		if err != nil {
+			log.Println("ERROR: Couldnt unmarshall proto")
+		}
+		NewRoomChannel<-request
 	}
 }

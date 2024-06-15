@@ -2,15 +2,20 @@ package main
 
 import (
 	"fmt"
-	"mmih/matching"
+	"mmih/matcher"
 	"mmih/rabbit"
+	"mmih/storage"
+	"sync"
 )
+
+var wg sync.WaitGroup;
 
 func main() {
 	fmt.Println("Starting mmih server")
 	fmt.Println("Attempting to connect to RMQ server")
-	var forever chan struct {};
+	wg.Add(1)
 	go rabbit.IntializeRMQClient();
-	go matching.InitializeMatchingClient();
-	<-forever
+	go storage.InitializeRedisConnection();
+	go matcher.InitializeMatching();
+	wg.Wait()
 }

@@ -5,12 +5,36 @@ option go_package = "/messages";
 // Struct sent as a request for a match with a potential user
 message MatchRequest {
 	string userId = 1;
-	string category = 2;
+	string roomId = 3;
 }
 
-// Struct sent out as a match confirmation, one per user
+// Struct sent out as a match confirmation
 message MatchConfirmation {
 	string roomId = 1;
 	repeated string users = 2;
 	string category = 3;
+}
+
+// Struct representing information about a singular room
+message RoomInfo {
+	string roomId = 1;
+	string description = 2;
+	int32 maxUsers = 3;
+	int32 currentUsers = 4;
+}
+
+
+// Struct representing info about all rooms from a given category
+message CategoryInfo {
+	string category = 1;
+	repeated RoomInfo rooms = 2;
+}
+
+
+// Request used in creating new rooms
+message NewRoomRequest {
+	string userId = 1;
+	string category = 2;
+	string description = 3;
+	int32 maxUsers = 4;
 }
